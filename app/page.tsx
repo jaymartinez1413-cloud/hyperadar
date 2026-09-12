@@ -1,47 +1,58 @@
+import { HyperadarApp } from "@/components/hyperadar/hyperadar-app"
+
 export default function Page() {
   return (
-    <main
-      style={{
-        colorScheme: 'light dark',
-        position: 'relative',
-        display: 'flex',
-        minHeight: '100vh',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'light-dark(#fff, #000)',
-        color: 'light-dark(#000, #fff)',
-      }}
-    >
-      <svg
-        aria-hidden="true"
-        style={{ width: 80, height: 80 }}
-        width={80}
-        height={80}
-        fill="none"
-        viewBox="0 0 20 20"
-        xmlns="http://www.w3.org/2000/svg"
-        stroke="currentColor"
-        strokeWidth="0.5"
-      >
-        <path
-          d="M14.2 14.2H17V6.9375C17 4.76288 15.2371 3 13.0625 3H5.8V5.8M14.2 14.2V7.79063L7.79062 14.2H14.2ZM14.2 14.2V17H6.9375C4.76288 17 3 15.2371 3 13.0625V5.8H5.8M5.8 5.8V12.2313L12.2313 5.8H5.8Z"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <p
-        style={{
-          position: 'absolute',
-          left: '50%',
-          top: 'calc(50% + 56px)',
-          transform: 'translateX(-50%)',
-          whiteSpace: 'nowrap',
-          fontSize: '14px',
-          fontWeight: 500,
-          color: 'light-dark(#71717a, #a1a1aa)',
-        }}
-      >
-        Your v0 generation will show here.
-      </p>
+    <main className="min-h-screen">
+      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-12">
+        <header className="mb-8 flex flex-col gap-4 border-b border-border pb-8 md:flex-row md:items-end md:justify-between">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <RadarMark />
+              <span className="font-mono text-lg font-semibold tracking-tight">
+                Hype<span className="text-primary">Radar</span>
+              </span>
+            </div>
+            <h1 className="mt-4 max-w-xl text-balance text-2xl font-semibold leading-tight md:text-3xl">
+              Is the hype leading the price, or already priced in?
+            </h1>
+            <p className="mt-2 max-w-xl text-pretty text-sm leading-relaxed text-muted-foreground">
+              A six-agent AI team reads real market, social, and SEC data to find social arbitrage in US stocks —
+              where crowd attention moves ahead of, or behind, the tape.
+            </p>
+          </div>
+          <ul className="flex shrink-0 flex-col gap-1.5 text-xs text-muted-foreground">
+            <li className="flex items-center gap-2">
+              <span className="h-1 w-1 rounded-full bg-primary" aria-hidden /> Live Yahoo Finance prices
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="h-1 w-1 rounded-full bg-primary" aria-hidden /> StockTwits & Reddit chatter
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="h-1 w-1 rounded-full bg-primary" aria-hidden /> SEC EDGAR insider filings
+            </li>
+          </ul>
+        </header>
+
+        <HyperadarApp />
+
+        <footer className="mt-12 border-t border-border pt-6 text-center text-xs text-muted-foreground">
+          HypeRadar is educational analysis only, not financial advice. Data is best-effort from public sources and may
+          be delayed or incomplete.
+        </footer>
+      </div>
     </main>
+  )
+}
+
+function RadarMark() {
+  return (
+    <span className="relative flex h-7 w-7 items-center justify-center rounded-md border border-primary/40 bg-primary/10">
+      <svg viewBox="0 0 24 24" className="h-4 w-4 text-primary" fill="none" aria-hidden>
+        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" opacity="0.4" />
+        <circle cx="12" cy="12" r="4.5" stroke="currentColor" strokeWidth="1.5" opacity="0.7" />
+        <path d="M12 12 L19 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="16" cy="9" r="1.4" fill="currentColor" />
+      </svg>
+    </span>
   )
 }
