@@ -119,4 +119,6 @@ export type Analysis = {
 export type AnalyzeResponse = {
   analysis: Analysis
   data: TickerData
+  // Set when live data or the AI call failed and we served a cached verdict.
+  stale?: boolean
 }

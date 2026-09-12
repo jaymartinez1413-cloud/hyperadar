@@ -3,6 +3,7 @@
 import { useState } from "react"
 import type { AnalyzeResponse } from "@/lib/types"
 import { SearchBar } from "./search-bar"
+import { TrendingNow } from "./trending-now"
 import { VerdictHeader } from "./verdict-header"
 import { AgentFindings } from "./agent-findings"
 import { HorizonCards } from "./horizon-cards"
@@ -43,8 +44,23 @@ export function HyperadarApp() {
     }
   }
 
+  // From Trending Now: if that card already fetched a full result, show it
+  // instantly; otherwise fall back to a normal scan.
+  function selectTrending(t: string, cached: AnalyzeResponse | null) {
+    if (cached) {
+      setTicker(t)
+      setError(null)
+      setLoading(false)
+      setResult(cached)
+      return
+    }
+    void analyze(t)
+  }
+
   return (
     <div className="flex flex-col gap-6">
+      <TrendingNow activeTicker={result?.data.ticker ?? ""} onSelect={selectTrending} />
+
       <SearchBar onSubmit={analyze} loading={loading} />
 
       {loading && <LoadingState ticker={ticker} />}
@@ -53,6 +69,12 @@ export function HyperadarApp() {
 
       {!loading && result && (
         <div className="flex flex-col gap-6">
+          {result.stale && (
+            <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-2.5 text-xs text-warning">
+              A live source was unavailable, so this shows the most recent cached verdict for{" "}
+              {result.data.ticker}. Numbers may be a few minutes old.
+            </div>
+          )}
           <div className="animate-rise">
             <VerdictHeader analysis={result.analysis} data={result.data} />
           </div>

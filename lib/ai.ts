@@ -1,9 +1,14 @@
 import { z } from "zod"
 import { google } from "@ai-sdk/google"
+import { groq } from "@ai-sdk/groq"
 
-// Google Gemini via a free API key (no credit card required).
+// Primary: Google Gemini via a free API key (no credit card required).
 // Reads GOOGLE_GENERATIVE_AI_API_KEY from the environment.
-export const MODEL = google("gemini-3.6-flash")
+export const GEMINI_MODEL = google("gemini-3.6-flash")
+
+// Fallback: Groq (also free, no card). Only enabled when GROQ_API_KEY is set,
+// so the app degrades gracefully whether or not the key is present.
+export const GROQ_MODEL = process.env.GROQ_API_KEY ? groq("openai/gpt-oss-120b") : null
 
 // Tolerant contract. Gemini reliably returns the right *content* but often
 // deviates on rigid shape details (extra/missing fields, out-of-range numbers,
