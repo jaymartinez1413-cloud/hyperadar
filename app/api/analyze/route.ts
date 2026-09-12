@@ -31,7 +31,19 @@ export async function POST(req: Request) {
 
     return Response.json({ analysis: output, data })
   } catch (err) {
-    console.log("[v0] analyze route error:", err instanceof Error ? err.message : String(err))
+    const message = err instanceof Error ? err.message : String(err)
+    console.log("[v0] analyze route error:", message)
+
+    if (/credit card/i.test(message)) {
+      return Response.json(
+        {
+          error:
+            "AI Gateway needs a credit card on file before it will run analyses. Open your Vercel dashboard, go to the AI tab, and click \"Add credit card\" to unlock your free credits. No code changes are needed once that's done.",
+        },
+        { status: 402 },
+      )
+    }
+
     return Response.json({ error: "Analysis failed. Please try again." }, { status: 500 })
   }
 }
