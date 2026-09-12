@@ -1,5 +1,5 @@
 import type { PlatformStat, SamplePost, TickerData } from "@/lib/types"
-import { getFundamentals, getPriceHistory } from "./yahoo"
+import { getFundamentals, getPriceHistory } from "./nasdaq"
 import { getStockTwits } from "./stocktwits"
 import { getReddit } from "./reddit"
 import { getInsiderActivity } from "./sec"
