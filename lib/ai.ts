@@ -155,6 +155,80 @@ export function reconcileAnalysis(a: ParsedAnalysis): ParsedAnalysis {
   return { ...a, conviction, recommendedHorizon }
 }
 
+// Models (Gemini especially) drift from the requested shape in consistent
+// ways: they nest the verdict fields under a "verdict" object, return
+// agentFindings as an object keyed by agent name instead of an array, and
+// express horizons as verdict.expectedMove.{shortTerm,longTerm}. This
+// normalizer reshapes those variants into our internal contract BEFORE schema
+// validation, so a valid analysis is never blanked out by a shape mismatch.
+const AGENT_ORDER = [
+  "Scout",
+  "Sentiment Analyst",
+  "Origin Tracer",
+  "Product Detective",
+  "Fundamentals Auditor",
+  "Risk Officer",
+] as const
+
+function toFindingObject(agent: string, val: unknown) {
+  if (typeof val === "string") return { agent, finding: val }
+  if (val && typeof val === "object") {
+    const v = val as Record<string, unknown>
+    const source =
+      typeof v.source === "string"
+        ? { platform: "", author: v.source, type: "organic", hasFinancialIncentive: false }
+        : v.source
+    return {
+      agent,
+      finding: (v.finding ?? v.assessment ?? v.text ?? v.summary ?? "") as string,
+      source,
+      productRealityScore: v.productRealityScore,
+      risks: v.risks,
+      hypePricedIn: v.hypePricedIn,
+    }
+  }
+  return { agent, finding: "" }
+}
+
+function normalizeFindings(f: unknown): unknown {
+  if (Array.isArray(f)) return f
+  if (f && typeof f === "object") {
+    const map = f as Record<string, unknown>
+    const known = AGENT_ORDER.filter((a) => a in map)
+    const extras = Object.keys(map).filter((k) => !(AGENT_ORDER as readonly string[]).includes(k))
+    return [...known, ...extras].map((agent) => toFindingObject(agent, map[agent]))
+  }
+  return []
+}
+
+function normalizeHorizons(h: unknown, expectedMove: unknown): unknown {
+  if (h && typeof h === "object" && ("short" in h || "medium" in h || "long" in h)) return h
+  const em = (expectedMove && typeof expectedMove === "object" ? expectedMove : {}) as Record<string, unknown>
+  const mk = (label: string, move: unknown, fit: number) =>
+    move ? { label, expectedMove: String(move), fit, reason: String(move) } : undefined
+  return {
+    short: mk("Days – weeks", em.shortTerm ?? em.short, 6),
+    medium: mk("1 – 3 months", em.midTerm ?? em.mediumTerm ?? em.medium, 5),
+    long: mk("3 – 12 months", em.longTerm ?? em.long, 5),
+  }
+}
+
+export function normalizeModelJson(input: unknown): unknown {
+  if (!input || typeof input !== "object") return input
+  const o = input as Record<string, unknown>
+  const verdict = (o.verdict && typeof o.verdict === "object" ? o.verdict : {}) as Record<string, unknown>
+  const pick = (k: string) => o[k] ?? verdict[k]
+  return {
+    ...o,
+    direction: pick("direction"),
+    conviction: pick("conviction"),
+    hypeStage: pick("hypeStage"),
+    recommendedHorizon: pick("recommendedHorizon"),
+    agentFindings: normalizeFindings(o.agentFindings),
+    horizons: normalizeHorizons(o.horizons, verdict.expectedMove ?? o.expectedMove),
+  }
+}
+
 // Pull the first balanced JSON object out of a model response, tolerating
 // ```json fences, leading prose, or trailing commentary.
 export function extractJson(text: string): unknown {
@@ -208,5 +282,46 @@ Run each agent in order. Each agent produces ONE finding of 1–2 sentences, wri
 - Peak or Fading → Neutral or Likely Loser unless fundamentals independently justify.
 - Expected move ranges must be asymmetric and honest: short-term ranges are wide, long-term ranges reflect fundamentals not hype. Never present a range as a promise.
 
-## Output
-Return the analysis conforming exactly to the provided schema. agentFindings must contain exactly these agents in order: Scout, Sentiment Analyst, Origin Tracer (with source), Product Detective (with productRealityScore), Fundamentals Auditor, Risk Officer (with risks array of 3 and hypePricedIn). rundown must have exactly 6 strings following: "What the hype is:", "Who started it:", "Is the product real:", "Can they monetize it:", "Key risk:", "Bottom line:". disclaimer must be "Educational analysis only. Not financial advice."`
+## Output format
+Return ONLY a single JSON object — no markdown fences, no commentary. Use EXACTLY this structure, with every field at the TOP LEVEL. Do NOT nest the verdict fields under a "verdict" object, and do NOT return agentFindings as an object keyed by agent name — it MUST be a JSON array:
+
+{
+  "ticker": "TICKER",
+  "direction": "Likely Gainer" | "Likely Loser" | "Neutral",
+  "conviction": <integer 0-100>,
+  "hypeStage": "Emerging" | "Accelerating" | "Peak" | "Fading",
+  "recommendedHorizon": "short" | "medium" | "long",
+  "horizons": {
+    "short":  { "label": "Days – weeks",  "expectedMove": "±X%", "fit": <integer 0-10>, "reason": "..." },
+    "medium": { "label": "1 – 3 months",  "expectedMove": "...",  "fit": <integer 0-10>, "reason": "..." },
+    "long":   { "label": "3 – 12 months", "expectedMove": "...",  "fit": <integer 0-10>, "reason": "..." }
+  },
+  "agentFindings": [
+    { "agent": "Scout", "finding": "1-2 sentences" },
+    { "agent": "Sentiment Analyst", "finding": "1-2 sentences" },
+    { "agent": "Origin Tracer", "finding": "1-2 sentences", "source": { "platform": "...", "author": "...", "type": "organic" | "influencer" | "company PR" | "paid promotion", "hasFinancialIncentive": true | false } },
+    { "agent": "Product Detective", "finding": "1-2 sentences", "productRealityScore": <integer 0-10> },
+    { "agent": "Fundamentals Auditor", "finding": "1-2 sentences" },
+    { "agent": "Risk Officer", "finding": "1-2 sentences", "risks": ["risk 1", "risk 2", "risk 3"], "hypePricedIn": true | false }
+  ],
+  "rundown": [
+    "What the hype is: ...",
+    "Who started it: ...",
+    "Is the product real: ...",
+    "Can they monetize it: ...",
+    "Key risk: ...",
+    "Bottom line: ..."
+  ],
+  "catalysts": [ { "date": "YYYY-MM-DD or approximate", "event": "..." } ],
+  "drivingFactors": [ { "factor": "...", "value": "...", "impact": "positive" | "negative" | "neutral", "weight": <number 0-1> } ],
+  "disclaimer": "Educational analysis only. Not financial advice."
+}
+
+## Consistency requirements (critical)
+- "conviction" is a single canonical number used across the entire UI. The "Bottom line:" rundown entry MUST express a confidence consistent with it (e.g. do not say "high conviction" with conviction 45).
+- "hypeStage" MUST match the stage you describe in the rundown prose.
+- "recommendedHorizon" MUST equal the horizon key ("short" | "medium" | "long") with the highest "fit" score.
+- agentFindings MUST be an array with exactly the six agents above, in that order.
+- rundown MUST have exactly those six labeled strings, in that order.
+- If you have no data for "catalysts" or "drivingFactors", return an empty array [] rather than inventing entries.
+- "disclaimer" MUST be "Educational analysis only. Not financial advice."`

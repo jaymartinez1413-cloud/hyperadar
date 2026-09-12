@@ -5,6 +5,7 @@ import {
   extractJson,
   GEMINI_MODEL,
   GROQ_MODEL,
+  normalizeModelJson,
   reconcileAnalysis,
   SYSTEM_PROMPT,
 } from "@/lib/ai"
@@ -31,7 +32,7 @@ async function generateWith(
   const { text } = await generateText({ model, system: SYSTEM_PROMPT, prompt: buildPrompt(data) })
   // Log the raw model output so the JSON shape can be verified in the server logs.
   console.log("[v0] raw model response:", text)
-  const parsed = analysisSchema.safeParse(extractJson(text))
+  const parsed = analysisSchema.safeParse(normalizeModelJson(extractJson(text)))
   if (!parsed.success) {
     console.log("[v0] schema parse failed:", parsed.error.message)
     return null
@@ -83,7 +84,7 @@ async function run(rawTicker: string): Promise<AnalyzeResponse> {
   const cached = getCached(ticker)
   if (cached) {
     console.log("[v0] AI failed, serving cached analysis for", ticker)
-    return { analysis: cached.analysis, data, stale: true }
+    return { analysis: cached.analysis, data, stale: true, raw: cached.raw }
   }
   throw new Error("AI analysis failed and no cached result is available.")
 }
