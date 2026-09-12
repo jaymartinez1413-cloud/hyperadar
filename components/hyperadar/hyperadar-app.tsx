@@ -47,22 +47,9 @@ export function HyperadarApp() {
     }
   }
 
-  // From Trending Now: if that card already fetched a full result, show it
-  // instantly; otherwise fall back to a normal scan.
-  function selectTrending(t: string, cached: AnalyzeResponse | null) {
-    if (cached) {
-      setTicker(t)
-      setError(null)
-      setLoading(false)
-      setResult(cached)
-      return
-    }
-    void analyze(t)
-  }
-
   return (
     <div className="flex flex-col gap-6">
-      <TrendingNow activeTicker={result?.data.ticker ?? ""} onSelect={selectTrending} />
+      <TrendingNow activeTicker={result?.data.ticker ?? ""} onSelect={analyze} />
 
       <SearchBar onSubmit={analyze} loading={loading} />
 
