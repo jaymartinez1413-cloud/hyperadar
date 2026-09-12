@@ -1,6 +1,13 @@
 import { generateText, type LanguageModel } from "ai"
 import { aggregateTickerData } from "@/lib/data/aggregate"
-import { analysisSchema, extractJson, GEMINI_MODEL, GROQ_MODEL, SYSTEM_PROMPT } from "@/lib/ai"
+import {
+  analysisSchema,
+  extractJson,
+  GEMINI_MODEL,
+  GROQ_MODEL,
+  reconcileAnalysis,
+  SYSTEM_PROMPT,
+} from "@/lib/ai"
 import { getCached, setCached } from "@/lib/cache"
 import type { Analysis, AnalyzeResponse, TickerData } from "@/lib/types"
 
@@ -17,14 +24,19 @@ function buildPrompt(data: TickerData): string {
   )}`
 }
 
-async function generateWith(model: LanguageModel, data: TickerData): Promise<Analysis | null> {
+async function generateWith(
+  model: LanguageModel,
+  data: TickerData,
+): Promise<{ analysis: Analysis; raw: string } | null> {
   const { text } = await generateText({ model, system: SYSTEM_PROMPT, prompt: buildPrompt(data) })
+  // Log the raw model output so the JSON shape can be verified in the server logs.
+  console.log("[v0] raw model response:", text)
   const parsed = analysisSchema.safeParse(extractJson(text))
   if (!parsed.success) {
     console.log("[v0] schema parse failed:", parsed.error.message)
     return null
   }
-  return parsed.data
+  return { analysis: reconcileAnalysis(parsed.data), raw: text }
 }
 
 // Runs the full pipeline for one ticker with layered resilience:
@@ -56,9 +68,9 @@ async function run(rawTicker: string): Promise<AnalyzeResponse> {
 
   for (const { name, model } of models) {
     try {
-      const analysis = await generateWith(model, data)
-      if (analysis) {
-        const response: AnalyzeResponse = { analysis, data }
+      const generated = await generateWith(model, data)
+      if (generated) {
+        const response: AnalyzeResponse = { analysis: generated.analysis, data, raw: generated.raw }
         setCached(ticker, response)
         return response
       }

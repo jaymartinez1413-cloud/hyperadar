@@ -35,6 +35,9 @@ export function HyperadarApp() {
       if (!res.ok) {
         setError(json?.error ?? "Something went wrong.")
       } else {
+        // Log the raw model output + parsed shape so the JSON can be verified.
+        console.log("[v0] raw model response:", json?.raw)
+        console.log("[v0] parsed analysis:", json?.analysis)
         setResult(json as AnalyzeResponse)
       }
     } catch {

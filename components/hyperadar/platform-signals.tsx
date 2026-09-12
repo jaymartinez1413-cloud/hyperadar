@@ -23,6 +23,8 @@ export function PlatformSignals({ data }: { data: TickerData }) {
                   {sentimentLabel(p.sentiment)}
                 </span>
               </div>
+            ) : p.comingSoon ? (
+              <span className="text-xs italic text-muted-foreground/60">Coming soon</span>
             ) : (
               <span className="text-xs text-muted-foreground">No free API</span>
             )}

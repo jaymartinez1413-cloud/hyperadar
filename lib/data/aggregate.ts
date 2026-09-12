@@ -2,6 +2,7 @@ import type { PlatformStat, SamplePost, TickerData } from "@/lib/types"
 import { getFundamentals, getPriceHistory } from "./nasdaq"
 import { getStockTwits } from "./stocktwits"
 import { getReddit } from "./reddit"
+import { getNews } from "./news"
 import { getInsiderActivity } from "./sec"
 
 // Pulls every real source in parallel and assembles the object the AI team analyzes.
@@ -17,8 +18,10 @@ export async function aggregateTickerData(rawTicker: string): Promise<TickerData
     getReddit(ticker),
     getInsiderActivity(ticker),
   ])
+  // News query benefits from the resolved company name, so fetch it after price.
+  const news = await getNews(ticker, price.companyName)
 
-  // Platforms with real keyless feeds vs. those requiring paid access.
+  // Working keyless feeds first, then planned integrations flagged comingSoon.
   const platforms: PlatformStat[] = [
     {
       platform: "StockTwits",
@@ -32,14 +35,19 @@ export async function aggregateTickerData(rawTicker: string): Promise<TickerData
       sentiment: reddit.sentiment,
       available: reddit.available,
     },
-    { platform: "X", mentions: null, sentiment: null, available: false },
-    { platform: "TikTok", mentions: null, sentiment: null, available: false },
-    { platform: "YouTube", mentions: null, sentiment: null, available: false },
-    { platform: "Instagram", mentions: null, sentiment: null, available: false },
-    { platform: "News", mentions: null, sentiment: null, available: false },
+    {
+      platform: "News",
+      mentions: news.mentions,
+      sentiment: news.sentiment,
+      available: news.available,
+    },
+    { platform: "X", mentions: null, sentiment: null, available: false, comingSoon: true },
+    { platform: "TikTok", mentions: null, sentiment: null, available: false, comingSoon: true },
+    { platform: "YouTube", mentions: null, sentiment: null, available: false, comingSoon: true },
+    { platform: "Instagram", mentions: null, sentiment: null, available: false, comingSoon: true },
   ]
 
-  const samplePosts: SamplePost[] = [...stocktwits.posts, ...reddit.posts]
+  const samplePosts: SamplePost[] = [...stocktwits.posts, ...reddit.posts, ...news.posts]
     .sort((a, b) => b.engagement - a.engagement)
     .slice(0, 8)
 
@@ -50,7 +58,6 @@ export async function aggregateTickerData(rawTicker: string): Promise<TickerData
   if (fundamentals.nextEarningsDate === null) missingFields.push("next earnings date")
   if (!insider.available) missingFields.push("SEC Form 4 insider transactions")
   missingFields.push("Google Trends index")
-  missingFields.push("X / TikTok / YouTube / Instagram / News mention data")
 
   return {
     ticker,

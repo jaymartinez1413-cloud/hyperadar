@@ -129,6 +129,32 @@ export const analysisSchema = z.object({
   disclaimer: z.string().catch("Educational analysis only. Not financial advice."),
 })
 
+export type ParsedAnalysis = z.infer<typeof analysisSchema>
+
+// Enforce internal consistency AFTER parsing, so the displayed numbers always
+// agree with the structured JSON fields rather than the model's prose:
+//   - conviction is the single canonical value (integer, clamped 0..100) used
+//     everywhere in the UI and referenced by the rundown.
+//   - recommendedHorizon must be the horizon with the highest fit score; if the
+//     model named a different one, we correct it to match the fit data.
+//   - hypeStage stays the structured field (the badge already renders it), which
+//     is authoritative over any stage wording in the rundown.
+export function reconcileAnalysis(a: ParsedAnalysis): ParsedAnalysis {
+  const conviction = Math.max(0, Math.min(100, Math.round(a.conviction)))
+
+  const fits: Array<["short" | "medium" | "long", number]> = [
+    ["short", a.horizons.short.fit],
+    ["medium", a.horizons.medium.fit],
+    ["long", a.horizons.long.fit],
+  ]
+  fits.sort((x, y) => y[1] - x[1])
+  const [topKey, topFit] = fits[0]
+  // Only override when the fit scores actually express a preference.
+  const recommendedHorizon = topFit > 0 ? topKey : a.recommendedHorizon
+
+  return { ...a, conviction, recommendedHorizon }
+}
+
 // Pull the first balanced JSON object out of a model response, tolerating
 // ```json fences, leading prose, or trailing commentary.
 export function extractJson(text: string): unknown {

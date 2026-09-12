@@ -22,10 +22,10 @@ export default function Page() {
           </div>
           <ul className="flex shrink-0 flex-col gap-1.5 text-xs text-muted-foreground">
             <li className="flex items-center gap-2">
-              <span className="h-1 w-1 rounded-full bg-primary" aria-hidden /> Live Yahoo Finance prices
+              <span className="h-1 w-1 rounded-full bg-primary" aria-hidden /> Live Nasdaq prices & fundamentals
             </li>
             <li className="flex items-center gap-2">
-              <span className="h-1 w-1 rounded-full bg-primary" aria-hidden /> StockTwits & Reddit chatter
+              <span className="h-1 w-1 rounded-full bg-primary" aria-hidden /> StockTwits, Reddit & News chatter
             </li>
             <li className="flex items-center gap-2">
               <span className="h-1 w-1 rounded-full bg-primary" aria-hidden /> SEC EDGAR insider filings

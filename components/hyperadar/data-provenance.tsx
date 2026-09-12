@@ -1,6 +1,12 @@
 import type { TickerData } from "@/lib/types"
 
-const SOURCES = ["Yahoo Finance (price/volume/fundamentals)", "StockTwits", "Reddit", "SEC EDGAR (Form 4)"]
+const SOURCES = [
+  "Nasdaq (price/volume/fundamentals)",
+  "StockTwits",
+  "Reddit (r/wallstreetbets, r/stocks)",
+  "Google News",
+  "SEC EDGAR (Form 4)",
+]
 
 export function DataProvenance({ data }: { data: TickerData }) {
   const when = new Date(data.fetchedAt).toLocaleString("en-US", {

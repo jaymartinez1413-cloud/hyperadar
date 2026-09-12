@@ -40,16 +40,33 @@ async function nasdaqFetch(path: string): Promise<any | null> {
   for (const assetclass of ASSET_CLASSES) {
     const sep = path.includes("?") ? "&" : "?"
     const url = `https://api.nasdaq.com/api/quote/${path}${sep}assetclass=${assetclass}`
-    try {
-      const res = await fetch(url, { headers: HEADERS, cache: "no-store" })
-      if (!res.ok) continue
-      const json = await res.json()
-      if (json?.data) return json.data
-    } catch {
-      // try next assetclass
-    }
+    const data = await rawFetch(url)
+    if (data) return data
   }
   return null
+}
+
+// Direct GET for Nasdaq endpoints that don't take an assetclass (e.g. company financials).
+async function rawFetch(url: string): Promise<any | null> {
+  try {
+    const res = await fetch(url, { headers: HEADERS, cache: "no-store" })
+    if (!res.ok) return null
+    const json = await res.json()
+    return json?.data ?? null
+  } catch {
+    return null
+  }
+}
+
+// Index a Nasdaq financials table by its row label, capturing the two most
+// recent periods (value2 = latest, value3 = prior) for growth calculations.
+function indexRows(table: any): Record<string, { latest: number; prior: number }> {
+  const out: Record<string, { latest: number; prior: number }> = {}
+  for (const r of table?.rows ?? []) {
+    const label = String(r?.value1 ?? "").trim()
+    if (label) out[label] = { latest: toNumber(r?.value2), prior: toNumber(r?.value3) }
+  }
+  return out
 }
 
 export async function getPriceHistory(ticker: string): Promise<PriceResult> {
@@ -110,21 +127,48 @@ export async function getFundamentals(ticker: string): Promise<Fundamentals> {
     marketCap: null,
   }
 
-  const summary = await nasdaqFetch(`${encodeURIComponent(ticker)}/summary`)
+  const sym = encodeURIComponent(ticker)
+  const [summary, financials, shortData] = await Promise.all([
+    nasdaqFetch(`${sym}/summary`),
+    rawFetch(`https://api.nasdaq.com/api/company/${sym}/financials?frequency=1`),
+    nasdaqFetch(`${sym}/short-interest`),
+  ])
+
   const sd = summary?.summaryData
-  if (!sd) return empty
+  const marketCap = sd?.MarketCap?.value ? toNumber(sd.MarketCap.value) : null
 
-  const marketCap = sd.MarketCap?.value ? toNumber(sd.MarketCap.value) : null
+  // Income statement -> revenue growth (YoY %) and gross margin (%).
+  const income = indexRows(financials?.incomeStatementTable)
+  const revenue = income["Total Revenue"]
+  const grossProfit = income["Gross Profit"]
+  const revenueGrowth =
+    revenue && revenue.prior > 0 ? ((revenue.latest - revenue.prior) / revenue.prior) * 100 : null
+  const grossMargin =
+    revenue && revenue.latest > 0 && grossProfit ? (grossProfit.latest / revenue.latest) * 100 : null
 
-  // Nasdaq's keyless summary does not expose revenue growth, margins, debt/cash,
-  // short interest, or the next earnings date — those remain null and are surfaced
-  // in the aggregator's missingFields so the AI team can discount conviction honestly.
+  // Balance sheet -> total debt and total cash. Statement values are in thousands,
+  // so scale to absolute dollars to match marketCap.
+  const balance = indexRows(financials?.balanceSheetTable)
+  const longTermDebt = balance["Long-Term Debt"]?.latest ?? 0
+  const shortTermDebt = balance["Short-Term Debt / Current Portion of Long-Term Debt"]?.latest ?? 0
+  const cash = balance["Cash and Cash Equivalents"]?.latest ?? 0
+  const shortTermInvestments = balance["Short-Term Investments"]?.latest ?? 0
+  const debtSum = longTermDebt + shortTermDebt
+  const cashSum = cash + shortTermInvestments
+  const totalDebt = debtSum > 0 ? debtSum * 1000 : null
+  const totalCash = cashSum > 0 ? cashSum * 1000 : null
+
+  // Most recent short-interest reading (shares short).
+  const shortRows: any[] = shortData?.shortInterestTable?.rows ?? []
+  const shortInterest = shortRows.length > 0 ? toNumber(shortRows[0]?.interest) || null : null
+
   return {
-    revenueGrowth: null,
-    grossMargin: null,
-    totalDebt: null,
-    totalCash: null,
-    shortInterest: null,
+    revenueGrowth,
+    grossMargin,
+    totalDebt,
+    totalCash,
+    shortInterest,
+    // Keyless Nasdaq feed does not expose a confirmed next earnings date.
     nextEarningsDate: null,
     marketCap: marketCap && marketCap > 0 ? marketCap : null,
   }

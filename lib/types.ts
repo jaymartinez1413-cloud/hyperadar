@@ -12,6 +12,9 @@ export type PlatformStat = {
   mentions: number | null
   sentiment: number | null // -1 (bearish) .. +1 (bullish)
   available: boolean
+  // True for planned integrations (X/TikTok/etc.) shown as "Coming soon"
+  // rather than a hard "No free API".
+  comingSoon?: boolean
 }
 
 export type SamplePost = {
@@ -121,4 +124,6 @@ export type AnalyzeResponse = {
   data: TickerData
   // Set when live data or the AI call failed and we served a cached verdict.
   stale?: boolean
+  // The raw model output, forwarded so the client can log it for shape verification.
+  raw?: string
 }
