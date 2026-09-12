@@ -1,6 +1,6 @@
-import { generateText, Output } from "ai"
+import { generateText } from "ai"
 import { aggregateTickerData } from "@/lib/data/aggregate"
-import { analysisSchema, MODEL, SYSTEM_PROMPT } from "@/lib/ai"
+import { analysisSchema, extractJson, MODEL, SYSTEM_PROMPT } from "@/lib/ai"
 
 export const maxDuration = 60
 
@@ -22,14 +22,21 @@ export async function POST(req: Request) {
       )
     }
 
-    const { output } = await generateText({
+    const { text } = await generateText({
       model: MODEL,
       system: SYSTEM_PROMPT,
-      output: Output.object({ schema: analysisSchema }),
-      prompt: `Analyze this ticker. Here is the JSON input:\n\n${JSON.stringify(data)}`,
+      prompt: `Analyze this ticker and respond with ONLY a single JSON object (no markdown fences, no commentary) matching the output contract described in your instructions. Here is the JSON input:\n\n${JSON.stringify(
+        data,
+      )}`,
     })
 
-    return Response.json({ analysis: output, data })
+    const parsed = analysisSchema.safeParse(extractJson(text))
+    if (!parsed.success) {
+      console.log("[v0] schema parse failed:", parsed.error.message)
+      return Response.json({ error: "Analysis failed. Please try again." }, { status: 502 })
+    }
+
+    return Response.json({ analysis: parsed.data, data })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.log("[v0] analyze route error:", message)

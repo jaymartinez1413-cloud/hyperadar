@@ -3,66 +3,155 @@ import { google } from "@ai-sdk/google"
 
 // Google Gemini via a free API key (no credit card required).
 // Reads GOOGLE_GENERATIVE_AI_API_KEY from the environment.
-export const MODEL = google("gemini-2.5-flash")
+export const MODEL = google("gemini-3.6-flash")
 
-// Mirrors the exact output contract from the Portfolio Manager system prompt.
+// Tolerant contract. Gemini reliably returns the right *content* but often
+// deviates on rigid shape details (extra/missing fields, out-of-range numbers,
+// slightly different enum casing). Every field carries a sensible default and
+// enums are coerced so a genuine analysis is never discarded over a minor
+// mismatch. We parse Gemini's JSON ourselves (see extractJson) and run it
+// through this schema with safeParse.
+const horizonSchema = z
+  .object({
+    label: z.string().catch(""),
+    expectedMove: z.string().catch(""),
+    fit: z.coerce.number().catch(5),
+    reason: z.string().catch(""),
+  })
+  .catch({ label: "", expectedMove: "", fit: 5, reason: "" })
+
+const directionSchema = z
+  .string()
+  .transform((v) => {
+    const s = v.toLowerCase()
+    if (s.includes("gain")) return "Likely Gainer" as const
+    if (s.includes("los")) return "Likely Loser" as const
+    return "Neutral" as const
+  })
+  .catch("Neutral" as const)
+
+const hypeStageSchema = z
+  .string()
+  .transform((v) => {
+    const s = v.toLowerCase()
+    if (s.includes("emerg")) return "Emerging" as const
+    if (s.includes("accel")) return "Accelerating" as const
+    if (s.includes("peak")) return "Peak" as const
+    if (s.includes("fad")) return "Fading" as const
+    return "Emerging" as const
+  })
+  .catch("Emerging" as const)
+
+const horizonKeySchema = z
+  .string()
+  .transform((v) => {
+    const s = v.toLowerCase()
+    if (s.startsWith("short")) return "short" as const
+    if (s.startsWith("long")) return "long" as const
+    return "medium" as const
+  })
+  .catch("medium" as const)
+
+const impactSchema = z
+  .string()
+  .transform((v) => {
+    const s = v.toLowerCase()
+    if (s.includes("pos")) return "positive" as const
+    if (s.includes("neg")) return "negative" as const
+    return "neutral" as const
+  })
+  .catch("neutral" as const)
+
 export const analysisSchema = z.object({
-  ticker: z.string(),
-  direction: z.enum(["Likely Gainer", "Likely Loser", "Neutral"]),
-  conviction: z.number().min(0).max(100),
-  hypeStage: z.enum(["Emerging", "Accelerating", "Peak", "Fading"]),
-  recommendedHorizon: z.enum(["short", "medium", "long"]),
-  horizons: z.object({
-    short: z.object({
-      label: z.string(),
-      expectedMove: z.string(),
-      fit: z.number().min(0).max(10),
-      reason: z.string(),
+  ticker: z.string().catch(""),
+  direction: directionSchema,
+  conviction: z.coerce.number().catch(50),
+  hypeStage: hypeStageSchema,
+  recommendedHorizon: horizonKeySchema,
+  horizons: z
+    .object({
+      short: horizonSchema,
+      medium: horizonSchema,
+      long: horizonSchema,
+    })
+    .catch({
+      short: { label: "", expectedMove: "", fit: 5, reason: "" },
+      medium: { label: "", expectedMove: "", fit: 5, reason: "" },
+      long: { label: "", expectedMove: "", fit: 5, reason: "" },
     }),
-    medium: z.object({
-      label: z.string(),
-      expectedMove: z.string(),
-      fit: z.number().min(0).max(10),
-      reason: z.string(),
-    }),
-    long: z.object({
-      label: z.string(),
-      expectedMove: z.string(),
-      fit: z.number().min(0).max(10),
-      reason: z.string(),
-    }),
-  }),
   agentFindings: z
     .array(
       z.object({
-        agent: z.string(),
-        finding: z.string(),
+        agent: z.string().catch(""),
+        finding: z.string().catch(""),
         source: z
           .object({
-            platform: z.string(),
-            author: z.string(),
-            type: z.enum(["organic", "influencer", "company PR", "paid promotion"]),
-            hasFinancialIncentive: z.boolean(),
+            platform: z.string().catch(""),
+            author: z.string().catch(""),
+            type: z
+              .string()
+              .transform((v) => {
+                const s = v.toLowerCase()
+                if (s.includes("influ")) return "influencer" as const
+                if (s.includes("pr") || s.includes("company")) return "company PR" as const
+                if (s.includes("paid") || s.includes("promo")) return "paid promotion" as const
+                return "organic" as const
+              })
+              .catch("organic" as const),
+            hasFinancialIncentive: z.coerce.boolean().catch(false),
           })
           .optional(),
-        productRealityScore: z.number().min(0).max(10).optional(),
-        risks: z.array(z.string()).optional(),
-        hypePricedIn: z.boolean().optional(),
+        productRealityScore: z.coerce.number().optional().catch(undefined),
+        risks: z.array(z.string()).optional().catch(undefined),
+        hypePricedIn: z.coerce.boolean().optional().catch(undefined),
       }),
     )
-    .min(6),
-  rundown: z.array(z.string()).length(6),
-  catalysts: z.array(z.object({ date: z.string(), event: z.string() })),
-  drivingFactors: z.array(
-    z.object({
-      factor: z.string(),
-      value: z.string(),
-      impact: z.enum(["positive", "negative", "neutral"]),
-      weight: z.number().min(0).max(1),
-    }),
-  ),
-  disclaimer: z.string(),
+    .catch([]),
+  rundown: z.array(z.string()).catch([]),
+  catalysts: z
+    .array(z.object({ date: z.string().catch(""), event: z.string().catch("") }))
+    .catch([]),
+  drivingFactors: z
+    .array(
+      z.object({
+        factor: z.string().catch(""),
+        value: z.string().catch(""),
+        impact: impactSchema,
+        weight: z.coerce.number().catch(0),
+      }),
+    )
+    .catch([]),
+  disclaimer: z.string().catch("Educational analysis only. Not financial advice."),
 })
+
+// Pull the first balanced JSON object out of a model response, tolerating
+// ```json fences, leading prose, or trailing commentary.
+export function extractJson(text: string): unknown {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  const candidate = fenced ? fenced[1] : text
+  const start = candidate.indexOf("{")
+  if (start === -1) throw new Error("No JSON object found in model output")
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let i = start; i < candidate.length; i++) {
+    const ch = candidate[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === "\\") escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') inString = true
+    else if (ch === "{") depth++
+    else if (ch === "}") {
+      depth--
+      if (depth === 0) return JSON.parse(candidate.slice(start, i + 1))
+    }
+  }
+  throw new Error("Unbalanced JSON object in model output")
+}
 
 export const SYSTEM_PROMPT = `You are the Portfolio Manager of HypeRadar's AI Team, coordinating six specialist agents: Scout, Sentiment Analyst, Origin Tracer, Product Detective, Fundamentals Auditor, and Risk Officer. You analyze social arbitrage opportunities in US stocks — cases where social hype may lead or lag the price.
 
