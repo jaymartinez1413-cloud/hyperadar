@@ -34,13 +34,13 @@ export async function POST(req: Request) {
     const message = err instanceof Error ? err.message : String(err)
     console.log("[v0] analyze route error:", message)
 
-    if (/credit card/i.test(message)) {
+    if (/api[_ ]?key|GOOGLE_GENERATIVE_AI_API_KEY|permission|API key not valid/i.test(message)) {
       return Response.json(
         {
           error:
-            "AI Gateway needs a credit card on file before it will run analyses. Open your Vercel dashboard, go to the AI tab, and click \"Add credit card\" to unlock your free credits. No code changes are needed once that's done.",
+            "The Google Gemini API key is missing or invalid. Get a free key at aistudio.google.com/apikey (no credit card required) and add it as GOOGLE_GENERATIVE_AI_API_KEY in your project settings.",
         },
-        { status: 402 },
+        { status: 401 },
       )
     }
 

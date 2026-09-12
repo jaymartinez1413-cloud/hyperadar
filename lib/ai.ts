@@ -1,6 +1,9 @@
 import { z } from "zod"
+import { google } from "@ai-sdk/google"
 
-export const MODEL = "openai/gpt-4.1"
+// Google Gemini via a free API key (no credit card required).
+// Reads GOOGLE_GENERATIVE_AI_API_KEY from the environment.
+export const MODEL = google("gemini-2.5-flash")
 
 // Mirrors the exact output contract from the Portfolio Manager system prompt.
 export const analysisSchema = z.object({
